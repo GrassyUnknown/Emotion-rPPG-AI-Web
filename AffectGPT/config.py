@@ -11,16 +11,16 @@ RESULT_ROOT = os.path.join(AFFECTGPT_ROOT, 'output/results')
 ## 所有模型的存储路径
 #######################
 PATH_TO_LLM = {
-    'Qwen25': '/home/zhangzijie/web/AffectGPT/models/Qwen2.5-7B-Instruct',
+    'Qwen25': '/home/zhangzijie/Emotion-rPPG-AI-Web/AffectGPT/models/Qwen2.5-7B-Instruct',
 }
 
 PATH_TO_VISUAL = {
-    'CLIP_VIT_LARGE': '/home/zhangzijie/web/AffectGPT/models/clip-vit-large-patch14',
+    'CLIP_VIT_LARGE': '/home/zhangzijie/Emotion-rPPG-AI-Web/AffectGPT/models/clip-vit-large-patch14',
 
 }
 
 PATH_TO_AUDIO = {
-    'HUBERT_LARGE':  '/home/zhangzijie/web/AffectGPT/models/chinese-hubert-large',
+    'HUBERT_LARGE':  '/home/zhangzijie/Emotion-rPPG-AI-Web/AffectGPT/models/chinese-hubert-large',
 }
 
 
