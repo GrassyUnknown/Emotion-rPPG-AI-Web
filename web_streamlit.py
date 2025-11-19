@@ -52,14 +52,6 @@ except Exception as e:
     st.error(f"⚠️ 模型加载失败：{e}")
     model = None
 
-st.markdown("""
-该应用支持：
-- 上传或录制视频；
-- 自动提取视频音频；
-- 使用 AffectGPT 模型分析情感状态；
-- 使用 Contrast-Phys 分析心率状态；
-""")
-
 # 初始化会话状态
 def init_session_state():
     defaults = {
@@ -70,10 +62,42 @@ def init_session_state():
         "result_ov": "",
         "result_ov_chi": "",
         "result_describe": "",
+        # 以下是历史记录
+        "video_path_history": [],
+        "subtitle_text_history": [],
+        "audio_path_history": [],
+        "result_ov_history": [],
+        "result_ov_chi_history": [],
+        "result_describe_history": [],
+        # 控制查看历史记录变量
+        "view_history": False,
     }
     for key, val in defaults.items():
         st.session_state.setdefault(key, val)
+
+
 init_session_state()
+# 欢迎语
+if not st.session_state.view_history:
+    st.markdown("""
+    该应用支持：
+    - 上传或录制视频；
+    - 自动提取视频音频；
+    - 使用 AffectGPT 模型分析情感状态；
+    - 使用 Contrast-Phys 分析心率状态；
+    """)
+else:
+    st.markdown(f"正在查看历史记录{st.session_state.view_history_index + 1}")
+
+
+def add_history():
+    print("Adding history for video path: " + st.session_state.video_path + ", subtitle: " + st.session_state.subtitle_text)
+    st.session_state.video_path_history.append(st.session_state.video_path)
+    st.session_state.subtitle_text_history.append(st.session_state.subtitle_text)
+    st.session_state.audio_path_history.append(st.session_state.audio_path)
+    st.session_state.result_ov_history.append(st.session_state.result_ov)
+    st.session_state.result_ov_chi_history.append(st.session_state.result_ov_chi)
+    st.session_state.result_describe_history.append(st.session_state.result_describe)
 
 def get_audio_path():
     if st.session_state.audio_path == "":
@@ -177,66 +201,67 @@ def clear_session_state_with_new_video():
     st.session_state.subtitle_text = ""
     st.session_state.audio_path = ""
     st.session_state.result_ov = ""
+    st.session_state.result_ov_chi = ""
     st.session_state.result_describe = ""
 
-# 上传或拍摄视频
-option = st.radio("选择输入方式：", ["上传视频文件", "使用摄像头拍摄"])
-if option == "上传视频文件":
-    uploaded_file = st.file_uploader("请上传视频文件（mp4 / mov / avi）", type=["mp4", "mov", "avi"])
-    if uploaded_file != None and st.session_state.uploaded_file != uploaded_file:
-        st.session_state.uploaded_file = uploaded_file
-        temp_file = tempfile.NamedTemporaryFile(delete=False)
-        temp_file.write(uploaded_file.read())
-        st.session_state.video_path = temp_file.name
-        clear_session_state_with_new_video()
-elif option == "使用摄像头拍摄":
-    def recorder_factory() -> MediaRecorder:
-        return MediaRecorder('/tmp/record.mp4' , format="mp4")
-    # 启动 WebRTC 以录制
-    webrtc_streamer(
-        key="record_only",
-        mode=WebRtcMode.SENDRECV,
-        media_stream_constraints={"video": True, "audio": True},  # 启用音视频
-        in_recorder_factory=recorder_factory,
-    )
-    try:
-        print(st.session_state.video)
-    except AttributeError as e:
-        temp_file = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
-        st.session_state.video = temp_file
-        print(st.session_state.video)
-    if st.button("完成录制"):
-        with open('/tmp/record.mp4', "rb") as record:
-            st.session_state.video.seek(0)
-            st.session_state.video.truncate()
-            st.session_state.video.write(record.read())
-        st.session_state.video_path=st.session_state.video.name
-        clear_session_state_with_new_video()
-# 展示视频
+if not st.session_state.view_history:
+    # 上传或拍摄视频
+    option = st.radio("选择输入方式：", ["上传视频文件", "使用摄像头拍摄"])
+    if option == "上传视频文件":
+        uploaded_file = st.file_uploader("请上传视频文件（mp4 / mov / avi）", type=["mp4", "mov", "avi"])
+        if uploaded_file != None and st.session_state.uploaded_file != uploaded_file:
+            if st.session_state.video_path != "":
+                add_history()
+            st.session_state.uploaded_file = uploaded_file
+            temp_file = tempfile.NamedTemporaryFile(delete=False)
+            temp_file.write(uploaded_file.read())
+            st.session_state.video_path = temp_file.name
+            clear_session_state_with_new_video()
+    elif option == "使用摄像头拍摄":
+        def recorder_factory() -> MediaRecorder:
+            return MediaRecorder('/tmp/record.mp4' , format="mp4")
+        # 启动 WebRTC 以录制
+        webrtc_streamer(
+            key="record_only",
+            mode=WebRtcMode.SENDRECV,
+            media_stream_constraints={"video": True, "audio": True},  # 启用音视频
+            in_recorder_factory=recorder_factory,
+        )
+        if st.button("完成录制"):
+            if st.session_state.video_path != "":
+                add_history()
+            temp_file = tempfile.NamedTemporaryFile(delete=False)
+            with open('/tmp/record.mp4', "rb") as record:
+                temp_file.seek(0)
+                temp_file.truncate()
+                temp_file.write(record.read())
+            st.session_state.video_path=temp_file.name
+            clear_session_state_with_new_video()
+    # 展示视频
 if st.session_state.video_path != "":
     st.video(st.session_state.video_path)
 
-
-# 字幕输入
-st.subheader("💬 视频里的人说了什么？")
-subtitle_text = st.text_area("请输入字幕（可选）", placeholder="若不输入，将自动进行语音识别。注意：错误的输入将显著影响识别结果。", height=100)
-# 用户输入了字幕
-if subtitle_text != "":
-    print("User input subtitle: " + subtitle_text)
-    st.session_state.user_subtitle_text = subtitle_text
-    # 存储的字幕信息与输入不一致，则更新
-    if st.session_state.subtitle_text != st.session_state.user_subtitle_text:
-        st.session_state.subtitle_text = st.session_state.user_subtitle_text
-        st.session_state.result_ov = ""
-        st.session_state.result_describe = ""
-else:
-    # 本次未输入字幕，但用户上一次输入了字幕
-    if hasattr(st.session_state, "user_subtitle_text"):
-        del st.session_state.user_subtitle_text
-        st.session_state.subtitle_text = ""
-        st.session_state.result_ov = ""
-        st.session_state.result_describe = ""
-    # 未输入字幕，且上一次也未输入字幕，则继续使用语音识别结果        
+if not st.session_state.view_history:
+    # 字幕输入
+    st.subheader("💬 视频里的人说了什么？")
+    subtitle_text = st.text_area("请输入字幕（可选）", placeholder="若不输入，将自动进行语音识别。注意：错误的输入将显著影响识别结果。", height=100)
+    # 用户输入了字幕
+    if subtitle_text != "":
+        print("User input subtitle: " + subtitle_text)
+        st.session_state.user_subtitle_text = subtitle_text
+        # 存储的字幕信息与输入不一致，则更新
+        if st.session_state.subtitle_text != st.session_state.user_subtitle_text:
+            st.session_state.subtitle_text = st.session_state.user_subtitle_text
+            st.session_state.result_ov = ""
+            st.session_state.result_describe = ""
+    else:
+        # 本次未输入字幕，但用户上一次输入了字幕
+        if hasattr(st.session_state, "user_subtitle_text"):
+            del st.session_state.user_subtitle_text
+            st.session_state.subtitle_text = ""
+            st.session_state.result_ov = ""
+            st.session_state.result_describe = ""
+        # 未输入字幕，且上一次也未输入字幕，则继续使用语音识别结果        
 
 
 if st.session_state.video_path != "":
@@ -258,7 +283,38 @@ if st.session_state.video_path != "":
 else:
     st.info("请先上传或拍摄一条视频。")
 
-#TODO: 增加历史记录
+# 点击侧边栏按钮的行为：若正在查看历史记录，则保存当前记录；否则新增历史记录
+def click_sidebar_button():
+    if (not st.session_state.view_history) and st.session_state.video_path != "":
+        add_history()
+    elif st.session_state.view_history:
+        st.session_state.subtitle_text_history[st.session_state.view_history_index] = st.session_state.subtitle_text
+        st.session_state.audio_path_history[st.session_state.view_history_index] = st.session_state.audio_path
+        st.session_state.result_ov_history[st.session_state.view_history_index] = st.session_state.result_ov
+        st.session_state.result_ov_chi_history[st.session_state.view_history_index] = st.session_state.result_ov_chi
+        st.session_state.result_describe_history[st.session_state.view_history_index] = st.session_state.result_describe
+
+# 历史记录栏
 with st.sidebar:
+    if st.button("新建分析"):
+        click_sidebar_button()
+        st.session_state.view_history = False
+        st.session_state.video_path = ""
+        st.rerun()
+
     st.title("💬 历史记录")
-    st.markdown("_功能开发中，敬请期待！_")
+    if(len(st.session_state.video_path_history) == 0):
+        st.write("暂无历史记录。")
+    for i in range(len(st.session_state.video_path_history)-1, -1, -1):
+        if st.button(f"记录 {i+1} " + st.session_state.subtitle_text_history[i]):
+            click_sidebar_button()
+            st.session_state.view_history = True
+            st.session_state.view_history_index = i
+            st.session_state.video_path = st.session_state.video_path_history[i]
+            st.session_state.subtitle_text = st.session_state.subtitle_text_history[i]
+            st.session_state.audio_path = st.session_state.audio_path_history[i]
+            st.session_state.result_ov = st.session_state.result_ov_history[i]
+            st.session_state.result_ov_chi = st.session_state.result_ov_chi_history[i]
+            st.session_state.result_describe = st.session_state.result_describe_history[i]
+            st.rerun()
+    
