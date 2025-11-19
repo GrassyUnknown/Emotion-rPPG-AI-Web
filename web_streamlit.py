@@ -39,18 +39,14 @@ def load_model():
         zeroshot=True,
         gpu_id=gpu_id
     )
-    # Qwen 模型加载
-    llm, tokenizer, sampling_params = func_read_batch_calling_model(modelname="Qwen25")
+    # Qwen 模型加载，gpu_memory_utilization与占用显存相关，目前总占用约66G
+    llm, tokenizer, sampling_params = func_read_batch_calling_model(modelname="Qwen25", gpu_memory_utilization=0.6)
     # Whisper 模型加载
     whisper_model = whisper.load_model("medium", f'cuda:{gpu_id}' if torch.cuda.is_available() else 'cpu')
     return model, llm, tokenizer, sampling_params, whisper_model
 
-try:
-    model, llm, tokenizer, sampling_params, whisper_model = load_model()
-    st.success("✅ 大模型已加载")
-except Exception as e:
-    st.error(f"⚠️ 模型加载失败：{e}")
-    model = None
+model, llm, tokenizer, sampling_params, whisper_model = load_model()
+st.success("✅ 大模型已加载")
 
 # 初始化会话状态
 def init_session_state():
@@ -208,7 +204,7 @@ if not st.session_state.view_history:
     # 上传或拍摄视频
     option = st.radio("选择输入方式：", ["上传视频文件", "使用摄像头拍摄"])
     if option == "上传视频文件":
-        uploaded_file = st.file_uploader("请上传视频文件（mp4 / mov / avi）", type=["mp4", "mov", "avi"])
+        uploaded_file = st.file_uploader("请上传视频文件", type=["mp4", "mov", "avi"])
         if uploaded_file != None and st.session_state.uploaded_file != uploaded_file:
             if st.session_state.video_path != "":
                 add_history()
@@ -218,6 +214,7 @@ if not st.session_state.view_history:
             st.session_state.video_path = temp_file.name
             clear_session_state_with_new_video()
     elif option == "使用摄像头拍摄":
+        st.markdown("录制说明：点击下方的“START”按钮，允许访问摄像头后即开始录制视频。录制完成后点击”STOP“，待加载完成后再点击“完成录制”按钮，以获取录制的视频。")
         def recorder_factory() -> MediaRecorder:
             return MediaRecorder('/tmp/record.mp4' , format="mp4")
         # 启动 WebRTC 以录制
