@@ -23,13 +23,13 @@ def func_postprocess_qwen(response):
     if response.startswith(":"):  response = response[len(":"):]
     if response.startswith("："): response = response[len("："):]
     response = response.strip()
-    response = response.replace('\n', '') # remove \n
+    # response = response.replace('\n', '') # remove \n
     response = response.strip()
     return response
 
-def func_read_batch_calling_model(modelname):
+def func_read_batch_calling_model(modelname, gpu_memory_utilization=0.4):
     model_path = config.PATH_TO_LLM[modelname]
-    llm = LLM(model=model_path)
+    llm = LLM(model=model_path, gpu_memory_utilization=gpu_memory_utilization)
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     sampling_params = SamplingParams(temperature=0.7, top_p=0.8, repetition_penalty=1.05, max_tokens=512)
     return llm, tokenizer, sampling_params
@@ -48,26 +48,23 @@ Input: {reason}; Output: """
 
     prompt = func_prompt_template(reason)
     prompt_list = [prompt]
-    response_list = get_completion_qwen_bacth(llm, sampling_params, tokenizer, prompt_list)
+    response_list = get_completion_qwen_batch(llm, sampling_params, tokenizer, prompt_list)
     return response_list[0]
 
 
 def translate_eng2chi_qwen(tokenizer=None, llm=None, sampling_params=None, reason=None):
     
     def func_prompt_template(reason):
-        prompt = f"""Please translate the English input into Chinese.
-Input: happy; Output: 高兴 \
-Input: angry; Output: 生气 \
-Input: {reason}; Output: """
+        prompt = f"""将以下英文翻译成中文。{reason}"""
         return prompt
 
     prompt = func_prompt_template(reason)
     prompt_list = [prompt]
-    response_list = get_completion_qwen_bacth(llm, sampling_params, tokenizer, prompt_list)
+    response_list = get_completion_qwen_batch(llm, sampling_params, tokenizer, prompt_list)
     return response_list[0]
 
 # 依赖于 vllm 
-def get_completion_qwen_bacth(llm, sampling_params, tokenizer, prompt_list):
+def get_completion_qwen_batch(llm, sampling_params, tokenizer, prompt_list):
     
     assert isinstance(prompt_list, list)
 
@@ -93,13 +90,27 @@ def get_completion_qwen_bacth(llm, sampling_params, tokenizer, prompt_list):
         print(f"Prompt: {prompt} \n Response: {response}")
     return batch_responses
 
+def subtitle_summarize_qwen(tokenizer=None, llm=None, sampling_params=None, subtitle=None):
+    
+    def func_prompt_template(subtitle):
+        prompt = f"""Please act as an expert in text summarization. \
+We provide you with subtitle content from a video. Your task is to condense this subtitle information into a more concise form while retaining the original meaning. \
+Please ensure that the summarized content is clear and easy to understand. \
+Your output should be less than 100 characters. \
+Input: {subtitle}; Output: """
+        return prompt
+    
+    prompt = func_prompt_template(subtitle)
+    prompt_list = [prompt]
+    response_list = get_completion_qwen_batch(llm, sampling_params, tokenizer, prompt_list)
+    return response_list[0]
+
 ## reason -> ov labels
 def reason_to_openset_qwen(tokenizer=None, llm=None, sampling_params=None, reason=None):
     
     def func_prompt_template(reason):
         prompt = f"""Please assume the role of an expert in the field of emotions. \
-We provide clues that may be related to the emotions of the characters. Based on the provided clues, please identify the emotional states of the main character. \
-The main character is the one with the most detailed clues. \
+We provide clues that may be related to the emotions of the characters. Based on the provided clues, please identify the emotional states of the speaker. \
 Please separate different emotional categories with commas and output only the clearly identifiable emotional categories in a list format. \
 If none are identified, please output an empty list. \
 Input: We cannot recognize his emotional state; Output: [] \
@@ -110,13 +121,33 @@ Input: {reason}; Output: """
     
     prompt = func_prompt_template(reason)
     prompt_list = [prompt]
-    response_list = get_completion_qwen_bacth(llm, sampling_params, tokenizer, prompt_list)
+    response_list = get_completion_qwen_batch(llm, sampling_params, tokenizer, prompt_list)
+    return response_list[0]
+
+## reason -> ov labels chi
+def reason_to_openset_qwen_chi(tokenizer=None, llm=None, sampling_params=None, reason=None):
+    
+    def func_prompt_template(reason):
+        prompt = f"""Please assume the role of an expert in the field of emotions. \
+We provide clues that may be related to the emotions of the characters. Based on the provided clues, please identify the emotional states of the speaker. \
+Please separate different emotional categories with commas and output only the clearly identifiable emotional categories in a list format. \
+If none are identified, please output an empty list. \
+回复的结果请使用中文。
+Input: We cannot recognize his emotional state; Output: [] \
+Input: His emotional state is happy, sad, and angry; Output: [开心，伤心，生气] \
+Input: {reason}; Output: """
+        return prompt
+    
+    
+    prompt = func_prompt_template(reason)
+    prompt_list = [prompt]
+    response_list = get_completion_qwen_batch(llm, sampling_params, tokenizer, prompt_list)
     return response_list[0]
 
 def reason_to_valence_qwen(model=None, tokenizer=None, llm=None, sampling_params=None, reason=None):
     
     def func_prompt_template(reason):
-        prompt = f"""Please identify the overall positive or negative emotional polarity of the main characters.  \
+        prompt = f"""Please identify the overall positive or negative emotional polarity of the speaker.  \
 The output should be a ﬂoating-point number ranging from -1 to 1.  \
 Here, -1 indicates extremely negative emotions, 0 indicates neutral emotions, and 1 indicates extremely positive emotions.  \
 Please provide your judgment as a ﬂoating-point number.  \
@@ -128,7 +159,7 @@ Input: {reason}; Output: """
     
     prompt = func_prompt_template(reason)
     prompt_list = [prompt]
-    response_list = get_completion_qwen_bacth(llm, sampling_params, tokenizer, prompt_list)
+    response_list = get_completion_qwen_batch(llm, sampling_params, tokenizer, prompt_list)
     return response_list[0]
 
 def reason_merge_qwen(tokenizer=None, llm=None, sampling_params=None, 
@@ -137,19 +168,19 @@ def reason_merge_qwen(tokenizer=None, llm=None, sampling_params=None,
     def func_prompt_template(reason, subtitle):
         
         reason_merge = ""
-        reason_merge += f"Clue: {reason}；"
-        reason_merge += f"Subtitle: {subtitle}"
+        reason_merge += f"Video and audio clue: {reason}；"
+        reason_merge += f"Speaker says(Subtitle): {subtitle}"
         prompt = f"Please assume the role of an expert in the field of emotions. \
-    We have provided clues from the video that may be related to the characters' emotional states. \
+    We have provided clues from the video that may be related to the speaker's emotional states. \
     In addition, we have also provided the subtitle content of the video. \
-    Please merge all these information to infer the emotional states of the characters, and provide reasoning for your inferences. \
+    Please merge all these information to infer the emotional states of the speaker, and provide reasoning for your inferences. \
     Input: {reason_merge}\
     Output:"
         return prompt
 
     prompt = func_prompt_template(reason, subtitle)
     prompt_list = [prompt]
-    response_list = get_completion_qwen_bacth(llm, sampling_params, tokenizer, prompt_list)
+    response_list = get_completion_qwen_batch(llm, sampling_params, tokenizer, prompt_list)
     return response_list[0]
 
 
