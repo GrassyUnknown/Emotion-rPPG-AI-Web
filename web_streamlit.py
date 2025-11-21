@@ -5,7 +5,7 @@ import tempfile
 import numpy as np
 import time
 import torch
-import random
+import ffmpeg
 import sys
 import os
 from moviepy import VideoFileClip
@@ -231,14 +231,18 @@ if not st.session_state.view_history:
     # 上传或拍摄视频
     option = st.radio("选择输入方式：", ["上传视频文件", "使用摄像头拍摄"])
     if option == "上传视频文件":
-        uploaded_file = st.file_uploader("请上传视频文件", type=["mp4", "mov", "avi"])
+        uploaded_file = st.file_uploader("请上传视频文件", type=["mp4", "mov", "avi", "mkv"])
         if uploaded_file != None and st.session_state.uploaded_file != uploaded_file:
             if st.session_state.video_path != "":
                 add_history()
             st.session_state.uploaded_file = uploaded_file
             temp_file = tempfile.NamedTemporaryFile(delete=False)
             temp_file.write(uploaded_file.read())
-            st.session_state.video_path = temp_file.name
+            if uploaded_file.type != "video/mp4":
+                st.session_state.video_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
+                ffmpeg.input(temp_file.name).output(st.session_state.video_path, vcodec='libx264', acodec='aac').run(overwrite_output=True)
+            else:
+                st.session_state.video_path = temp_file.name
             clear_session_state_with_new_video()
     elif option == "使用摄像头拍摄":
         st.markdown("录制说明：点击下方的“START”按钮，允许访问摄像头后即开始录制视频。录制完成后点击”STOP“，待加载完成后再点击“完成录制”按钮，以获取录制的视频。")
