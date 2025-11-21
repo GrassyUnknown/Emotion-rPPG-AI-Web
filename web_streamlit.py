@@ -58,6 +58,8 @@ def init_session_state():
         "result_ov": "",
         "result_ov_chi": "",
         "result_describe": "",
+        "result_rppg_hr": "",
+        "result_rppg_img": None,
         # 以下是历史记录
         "video_path_history": [],
         "subtitle_text_history": [],
@@ -65,6 +67,8 @@ def init_session_state():
         "result_ov_history": [],
         "result_ov_chi_history": [],
         "result_describe_history": [],
+        "result_rppg_hr_history": [],
+        "result_rppg_img_history": [],
         # 控制查看历史记录变量
         "view_history": False,
     }
@@ -94,21 +98,31 @@ def add_history():
     st.session_state.result_ov_history.append(st.session_state.result_ov)
     st.session_state.result_ov_chi_history.append(st.session_state.result_ov_chi)
     st.session_state.result_describe_history.append(st.session_state.result_describe)
+    st.session_state.result_rppg_hr_history.append(st.session_state.result_rppg_hr)
+    st.session_state.result_rppg_img_history.append(st.session_state.result_rppg_img)
 
 def get_audio_path():
     if st.session_state.audio_path == "":
-        with st.spinner("正在提取音频..."):
-            video_clip = VideoFileClip(st.session_state.video_path)
-            temp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-            video_clip.audio.write_audiofile(temp_audio.name, codec='pcm_s16le')
-            video_clip.close()
-            st.session_state.audio_path = temp_audio.name
+        try:
+            with st.spinner("正在提取音频..."):
+                video_clip = VideoFileClip(st.session_state.video_path)
+                temp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+                video_clip.audio.write_audiofile(temp_audio.name, codec='pcm_s16le')
+                video_clip.close()
+                st.session_state.audio_path = temp_audio.name
+        except Exception as e:
+            st.error("音频提取失败，可能是源视频中无音频信息。")
+            st.session_state.audio_path = ""
     if st.session_state.audio_path:
         st.success("✅ 音频提取成功")
         st.audio(st.session_state.audio_path)
 
 def get_subtitle_text():
     if st.session_state.subtitle_text == "":
+        if st.session_state.audio_path == "":
+            st.error("无法进行语音识别，缺少音频信息。")
+            st.session_state.subtitle_text = ""
+            return
         with st.spinner("正在识别音频..."):
             result = whisper_model.transcribe(st.session_state.audio_path, initial_prompt="接下来是一段视频的字幕。Here are subtitles of a video.")
             print("Result of whisper:" + result['text'])
@@ -180,6 +194,7 @@ def get_emotion_result_describe():
                     subtitle=st.session_state.subtitle_text
                 )
                 print(result_describe)
+                st.markdown(f"初步识别结果（英文）：{result_describe}")
                 st.session_state.result_describe = reason_merge_qwen(tokenizer, llm, sampling_params, 
                                                                 reason=result_describe,
                                                                 subtitle=st.session_state.subtitle_text)
@@ -192,6 +207,16 @@ def get_emotion_result_describe():
     st.subheader("情绪识别结果：")
     st.markdown(st.session_state.result_describe)
 
+def get_rppg():
+    if st.session_state.result_rppg_hr == "":
+        with st.spinner("正在检测心率..."):            
+            st.session_state.result_rppg_hr, st.session_state.result_rppg_img = \
+            analyze_heart_rate(st.session_state.video_path, gpu_id)
+    st.success("✅ 心率检测完成")
+    st.subheader("心率检测结果：")
+    st.metric("估计心率", f"{st.session_state.result_rppg_hr:.2f} bpm")
+    st.image(st.session_state.result_rppg_img, caption="rPPG 波形与功率谱", use_container_width=True)
+
 # 当上传新视频时，清空结果
 def clear_session_state_with_new_video():
     st.session_state.subtitle_text = ""
@@ -199,6 +224,8 @@ def clear_session_state_with_new_video():
     st.session_state.result_ov = ""
     st.session_state.result_ov_chi = ""
     st.session_state.result_describe = ""
+    st.session_state.result_rppg_hr = ""
+    st.session_state.result_rppg_img = None
 
 if not st.session_state.view_history:
     # 上传或拍摄视频
@@ -262,6 +289,7 @@ if not st.session_state.view_history:
 
 
 if st.session_state.video_path != "":
+    #TODO 将心率信息接入情感分析？
     if st.button("分析情绪关键词"):
         get_audio_path()
         get_subtitle_text()
@@ -271,12 +299,8 @@ if st.session_state.video_path != "":
         get_subtitle_text()
         get_emotion_result_describe()
     if st.button("检测心率"):
-        with st.spinner("正在检测心率..."):            
-            hr, img = analyze_heart_rate(st.session_state.video_path, gpu_id)
-            st.success("✅ 心率检测完成")
-            st.subheader("心率检测结果：")
-            st.metric("估计心率", f"{hr:.2f} bpm")
-            st.image(img, caption="rPPG 波形与功率谱", use_container_width=True)
+        get_rppg()
+
 else:
     st.info("请先上传或拍摄一条视频。")
 
@@ -290,6 +314,8 @@ def click_sidebar_button():
         st.session_state.result_ov_history[st.session_state.view_history_index] = st.session_state.result_ov
         st.session_state.result_ov_chi_history[st.session_state.view_history_index] = st.session_state.result_ov_chi
         st.session_state.result_describe_history[st.session_state.view_history_index] = st.session_state.result_describe
+        st.session_state.result_rppg_hr_history[st.session_state.view_history_index] = st.session_state.result_rppg_hr
+        st.session_state.result_rppg_img_history[st.session_state.view_history_index] = st.session_state.result_rppg_img
 
 # 历史记录栏
 with st.sidebar:
@@ -313,5 +339,7 @@ with st.sidebar:
             st.session_state.result_ov = st.session_state.result_ov_history[i]
             st.session_state.result_ov_chi = st.session_state.result_ov_chi_history[i]
             st.session_state.result_describe = st.session_state.result_describe_history[i]
+            st.session_state.result_rppg_hr = st.session_state.result_rppg_hr_history[i]
+            st.session_state.result_rppg_img = st.session_state.result_rppg_img_history[i]
             st.rerun()
     
