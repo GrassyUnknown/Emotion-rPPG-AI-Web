@@ -1,7 +1,10 @@
-import cv2
+import cv2, os
 import numpy as np
 from facenet_pytorch import MTCNN
 import torch
+from PIL import Image
+from rppg.face_det.utils import crop_faces
+
 
 '''
 # 初始化 OpenFace 人脸对齐器
@@ -78,6 +81,7 @@ def face_detection(video_path):
     N = 0
     video_list = []
     while(cap.isOpened()):
+        # 服务器资源不够时这里会卡住
         ret, frame = cap.read()
         N += 1
 
@@ -109,6 +113,51 @@ def face_detection(video_path):
 
     face_list = np.array(face_list) # (T, H, W, C)
     face_list = np.transpose(face_list, (3,0,1,2)) # (C, T, H, W)
-    face_list = np.array(face_list)[np.newaxis]
+    face_list = np.array(face_list)[np.newaxis] / 255
 
     return face_list, fps
+
+def make_dataset_from_video(video):
+    # images : 长度为 T 的 list， 每个值为 [00001, (H,W,3)]
+    images = []
+    cap = cv2.VideoCapture(video)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    for i in range(frame_count):
+        ret, frame = cap.read()
+        frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        fname = f'{i:05d}'
+        if ret:
+            images.append((fname, frame))
+    cap.release()
+    return images, fps
+
+def face_detection_align(video_path):
+
+    files, fps = make_dataset_from_video(video_path)
+
+    image_size = 128
+    # scale = 1.0  # align only
+    scale = 0.8  # align + crop
+    center_sigma = 1.0
+    xy_sigma = 3.0
+    use_fa = False
+
+    crops, orig_images, quads = crop_faces(image_size, files, scale, center_sigma, xy_sigma, use_fa)
+
+    if crops is None:
+        print(f'too less face detected in video {video_path} -----------------')
+        return face_detection(video_path)
+        
+    face_list = []
+    for i in range(len(crops)):
+        img = crops[i]
+        face_list.append(img)
+
+    face_list = np.array(face_list) # (T, H, W, C)
+    face_list = np.transpose(face_list, (3,0,1,2)) # (C, T, H, W)
+    face_list = np.array(face_list)[np.newaxis] / 255
+
+    return face_list, fps
+
+

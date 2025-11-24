@@ -144,7 +144,7 @@ Input: {reason}; Output: """
     response_list = get_completion_qwen_batch(llm, sampling_params, tokenizer, prompt_list)
     return response_list[0]
 
-def reason_to_valence_qwen(model=None, tokenizer=None, llm=None, sampling_params=None, reason=None):
+def reason_to_valence_qwen(tokenizer=None, llm=None, sampling_params=None, reason=None):
     
     def func_prompt_template(reason):
         prompt = f"""Please identify the overall positive or negative emotional polarity of the speaker.  \

@@ -3,7 +3,7 @@ from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 from aiortc.contrib.media import MediaRecorder
 import tempfile
 import numpy as np
-import time
+import matplotlib.pyplot as plt
 import torch
 import ffmpeg
 import sys
@@ -22,6 +22,7 @@ from rppg.demo import analyze_heart_rate
 
 # Qwen 推理依赖
 from qwen import *
+
 
 gpu_id = 0
 
@@ -57,6 +58,7 @@ def init_session_state():
         "audio_path": "",
         "result_ov": "",
         "result_ov_chi": "",
+        "result_sentiment": None,
         "result_describe": "",
         "result_rppg_hr": "",
         "result_rppg_img": None,
@@ -66,6 +68,7 @@ def init_session_state():
         "audio_path_history": [],
         "result_ov_history": [],
         "result_ov_chi_history": [],
+        "result_sentiment_history": [],
         "result_describe_history": [],
         "result_rppg_hr_history": [],
         "result_rppg_img_history": [],
@@ -97,6 +100,7 @@ def add_history():
     st.session_state.audio_path_history.append(st.session_state.audio_path)
     st.session_state.result_ov_history.append(st.session_state.result_ov)
     st.session_state.result_ov_chi_history.append(st.session_state.result_ov_chi)
+    st.session_state.result_sentiment_history.append(st.session_state.result_sentiment)
     st.session_state.result_describe_history.append(st.session_state.result_describe)
     st.session_state.result_rppg_hr_history.append(st.session_state.result_rppg_hr)
     st.session_state.result_rppg_img_history.append(st.session_state.result_rppg_img)
@@ -184,6 +188,31 @@ def get_emotion_result_ov():
     display_ov_result()
     display_ov_result_chi()
 
+def get_emotion_result_sentiment():
+    if st.session_state.result_sentiment is None:
+        with st.spinner("正在进行情绪极性识别..."):
+            polarity = float(reason_to_valence_qwen(tokenizer, llm, sampling_params, reason=st.session_state.result_ov))
+            fig, ax = plt.subplots(figsize=(6, 1))
+            gradient = np.linspace(0, 1, 500).reshape(1, -1)
+            ax.imshow(gradient, extent=(-1, 1, 0.4, 0.6),
+                    cmap="rainbow", aspect="auto")  # 蓝-白-红
+            ax.hlines(0.5, -1, 1, color="black", linewidth=1)
+            ax.plot(polarity, 0.5, "o", markersize=16, color="black")
+            ax.set_xticks([-1, -0.5, 0, 0.5, 1])
+            ax.set_yticks([])
+            ax.text(polarity, 0.7, f"{polarity:.2f}", ha="center", fontsize=12)
+            ax.text(-1, 0.25, "😡 Negative", ha="center", fontsize=12, color="blue")
+            ax.text(0, 0.25, "😐 Neutral", ha="center", fontsize=12, color="gray")
+            ax.text(1, 0.25, "😄 Positive", ha="center", fontsize=12, color="red")
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+            st.session_state.result_sentiment = fig
+    st.success("✅ 情绪极性识别完成")
+    st.subheader("情绪极性识别结果：")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.pyplot(st.session_state.result_sentiment, use_container_width=False)
+
 def get_emotion_result_describe():
     if st.session_state.result_describe == "":
         with st.spinner("正在进行情绪识别..."):
@@ -223,6 +252,7 @@ def clear_session_state_with_new_video():
     st.session_state.audio_path = ""
     st.session_state.result_ov = ""
     st.session_state.result_ov_chi = ""
+    st.session_state.result_sentiment = None
     st.session_state.result_describe = ""
     st.session_state.result_rppg_hr = ""
     st.session_state.result_rppg_img = None
@@ -269,6 +299,13 @@ if not st.session_state.view_history:
 if st.session_state.video_path != "":
     st.video(st.session_state.video_path)
 
+# 当上传新字幕时，清空结果
+def clear_session_state_with_new_subtitle():
+    st.session_state.result_ov = ""
+    st.session_state.result_ov_chi = ""
+    st.session_state.result_sentiment = None
+    st.session_state.result_describe = ""
+
 if not st.session_state.view_history:
     # 字幕输入
     st.subheader("💬 视频里的人说了什么？")
@@ -280,15 +317,13 @@ if not st.session_state.view_history:
         # 存储的字幕信息与输入不一致，则更新
         if st.session_state.subtitle_text != st.session_state.user_subtitle_text:
             st.session_state.subtitle_text = st.session_state.user_subtitle_text
-            st.session_state.result_ov = ""
-            st.session_state.result_describe = ""
+            clear_session_state_with_new_subtitle()
     else:
         # 本次未输入字幕，但用户上一次输入了字幕
         if hasattr(st.session_state, "user_subtitle_text"):
             del st.session_state.user_subtitle_text
             st.session_state.subtitle_text = ""
-            st.session_state.result_ov = ""
-            st.session_state.result_describe = ""
+            clear_session_state_with_new_subtitle()
         # 未输入字幕，且上一次也未输入字幕，则继续使用语音识别结果        
 
 
@@ -298,6 +333,7 @@ if st.session_state.video_path != "":
         get_audio_path()
         get_subtitle_text()
         get_emotion_result_ov()
+        get_emotion_result_sentiment()
     if st.button("描述情绪"):
         get_audio_path()
         get_subtitle_text()
@@ -317,6 +353,7 @@ def click_sidebar_button():
         st.session_state.audio_path_history[st.session_state.view_history_index] = st.session_state.audio_path
         st.session_state.result_ov_history[st.session_state.view_history_index] = st.session_state.result_ov
         st.session_state.result_ov_chi_history[st.session_state.view_history_index] = st.session_state.result_ov_chi
+        st.session_state.result_sentiment_history[st.session_state.view_history_index] = st.session_state.result_sentiment
         st.session_state.result_describe_history[st.session_state.view_history_index] = st.session_state.result_describe
         st.session_state.result_rppg_hr_history[st.session_state.view_history_index] = st.session_state.result_rppg_hr
         st.session_state.result_rppg_img_history[st.session_state.view_history_index] = st.session_state.result_rppg_img
@@ -342,6 +379,7 @@ with st.sidebar:
             st.session_state.audio_path = st.session_state.audio_path_history[i]
             st.session_state.result_ov = st.session_state.result_ov_history[i]
             st.session_state.result_ov_chi = st.session_state.result_ov_chi_history[i]
+            st.session_state.result_sentiment = st.session_state.result_sentiment_history[i]
             st.session_state.result_describe = st.session_state.result_describe_history[i]
             st.session_state.result_rppg_hr = st.session_state.result_rppg_hr_history[i]
             st.session_state.result_rppg_img = st.session_state.result_rppg_img_history[i]
