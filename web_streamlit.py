@@ -106,11 +106,11 @@ def get_audio_path():
                 video_clip.audio.write_audiofile(temp_audio.name, codec='pcm_s16le')
                 video_clip.close()
                 st.session_state.result.audio_path = temp_audio.name
+            st.success("✅ 音频提取成功")
         except Exception as e:
             st.error("音频提取失败，可能是源视频中无音频信息。")
             st.session_state.result.audio_path = None
     if st.session_state.result.audio_path:
-        st.success("✅ 音频提取成功")
         st.audio(st.session_state.result.audio_path)
 
 def get_subtitle_text():
@@ -125,7 +125,8 @@ def get_subtitle_text():
             st.session_state.result.subtitle_text = result['text']
             # converter = opencc.OpenCC("t2s.json")
             # subtitle_text = converter.convert(subtitle_text)
-    st.success("✅ 字幕：" + st.session_state.result.subtitle_text)
+            st.success("✅ 字幕识别成功")
+    st.success("字幕：" + st.session_state.result.subtitle_text)
     if len(st.session_state.result.subtitle_text) > 125:
         with st.spinner("字幕信息过长，调用Qwen简化字幕内容..."):
             st.session_state.result.subtitle_text = subtitle_summarize_qwen(tokenizer, llm, sampling_params, 
@@ -175,8 +176,8 @@ def get_emotion_result_ov():
                 st.session_state.result.ov_chi = reason_to_openset_qwen_chi(tokenizer, llm, sampling_params, result_ov)
             except Exception as e:
                 st.error(f"情绪识别出错：{e}")
-    st.success("✅ 情绪识别完成")
-    st.subheader("情绪识别结果：")
+        st.success("✅ 情绪识别完成")
+    st.subheader("情绪关键词：")
     display_ov_result()
     display_ov_result_chi()
 
@@ -199,7 +200,7 @@ def get_emotion_result_sentiment():
             for spine in ax.spines.values():
                 spine.set_visible(False)
             st.session_state.result.sentiment = fig
-    st.success("✅ 情绪极性识别完成")
+        st.success("✅ 情绪极性识别完成")
     st.subheader("情绪极性：")
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -207,7 +208,7 @@ def get_emotion_result_sentiment():
 
 def get_emotion_result_describe():
     if st.session_state.result.describe == None:
-        with st.spinner("正在进行情绪识别..."):
+        with st.spinner("正在分析..."):
             try:
                 result_describe = model.infer_emotion_describe(
                     video_path=st.session_state.result.video_path,
@@ -215,7 +216,7 @@ def get_emotion_result_describe():
                     subtitle=st.session_state.result.subtitle_text
                 )
                 print(result_describe)
-                st.markdown(f"初步识别：{result_describe}")
+                st.markdown(f"初步分析：{result_describe}")
                 st.session_state.result.describe = reason_merge_qwen(tokenizer, llm, sampling_params, 
                                                                 reason=result_describe,
                                                                 subtitle=st.session_state.result.subtitle_text,
@@ -225,20 +226,20 @@ def get_emotion_result_describe():
                 st.session_state.result.describe += translate_eng2chi_qwen(tokenizer, llm, sampling_params, 
                                                                 reason=st.session_state.result.describe)
             except Exception as e:
-                st.error(f"情绪识别出错：{e}")
-    st.success("✅ 情绪识别完成")
-    st.subheader("情绪识别结果：")
+                st.error(f"情绪分析出错：{e}")
+        st.success("✅ 情绪分析完成")
+    st.subheader("情绪分析结果：")
     st.markdown(st.session_state.result.describe)
 
 def get_rppg():
     if st.session_state.result.rppg_hr == None:
-        with st.spinner("正在检测心率..."):            
+        with st.spinner("正在检测..."):            
             st.session_state.result.rppg_hr, st.session_state.result.rppg_img = \
             analyze_heart_rate(st.session_state.result.video_path, gpu_id)
-    st.success("✅ 心率检测完成")
-    st.subheader("心率检测结果：")
+        st.success("✅ 生理信号检测完成")
+    st.subheader("生理信号检测结果：")
     st.metric("估计心率", f"{st.session_state.result.rppg_hr:.2f} bpm")
-    st.image(st.session_state.result.rppg_img, caption="rPPG 波形与功率谱", use_container_width=True)
+    st.image(st.session_state.result.rppg_img, caption="波形图", use_container_width=True)
 
 
 if not st.session_state.view_history:
