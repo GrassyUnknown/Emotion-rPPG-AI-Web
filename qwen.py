@@ -163,22 +163,27 @@ Input: {reason}; Output: """
     return response_list[0]
 
 def reason_merge_qwen(tokenizer=None, llm=None, sampling_params=None, 
-                      reason=None, subtitle=None):
+                      reason=None, subtitle=None, ov=None, hr=None):
     
-    def func_prompt_template(reason, subtitle):
+    def func_prompt_template(reason, subtitle, ov, hr):
         
         reason_merge = ""
         reason_merge += f"Video and audio clue: {reason}；"
         reason_merge += f"Speaker says(Subtitle): {subtitle}"
+        if hr is not None:
+            reason_merge += f"The speaker's heart rate is {hr} bpm."
+        if ov is not None:
+            reason_merge += f"The detected open-vocabulary emotions are: {ov}."
         prompt = f"Please assume the role of an expert in the field of emotions. \
-    We have provided clues from the video that may be related to the speaker's emotional states. \
-    In addition, we have also provided the subtitle content of the video. \
-    Please merge all these information to infer the emotional states of the speaker, and provide reasoning for your inferences. \
-    Input: {reason_merge}\
-    Output:"
+We have provided clues from the video that may be related to the speaker's emotional states. \
+In addition, we have also provided the subtitle content of the video. \
+The heart rate information of the speaker is optional. The detected open-vocabulary emotions are also optional. \
+Please merge all these information to infer the emotional states of the speaker, and provide reasoning for your inferences. \
+Input: {reason_merge}\
+Output:"
         return prompt
 
-    prompt = func_prompt_template(reason, subtitle)
+    prompt = func_prompt_template(reason, subtitle, ov, hr)
     prompt_list = [prompt]
     response_list = get_completion_qwen_batch(llm, sampling_params, tokenizer, prompt_list)
     return response_list[0]
